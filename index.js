@@ -3,32 +3,29 @@ const cors = require('cors');
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const multer = require('multer');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-/**
- * Route: GET /process-files
- * Description: Reads three local files and processes them using a Python script.
- */
-app.get('/process-files', (req, res) => {
-  try {
-    // Define file paths for the local text files
-    const filePaths = [
-      path.resolve(__dirname, 'file1.txt'),
-      path.resolve(__dirname, 'file2.txt'),
-      path.resolve(__dirname, 'file3.txt'),
-    ];
+// Configure multer for file uploads
+const upload = multer({ dest: 'uploads/' });
 
-    // Check if all files exist before proceeding
-    for (const filePath of filePaths) {
-      if (!fs.existsSync(filePath)) {
-        return res.status(404).json({
-          error: `File not found: ${path.basename(filePath)}`,
-        });
-      }
+/**
+ * Route: POST /process-files
+ * Description: Accepts three files from the user and processes them using a Python script.
+ */
+app.post('/process-files', upload.array('files', 3), (req, res) => {
+  try {
+    if (!req.files || req.files.length !== 3) {
+      return res
+        .status(400)
+        .json({ error: 'Exactly three files must be uploaded' });
     }
+
+    // Get uploaded file paths
+    const filePaths = req.files.map((file) => file.path);
 
     // Spawn a Python process and pass file paths as arguments
     const pythonProcess = spawn('python3', ['process.py', ...filePaths]);
@@ -48,6 +45,9 @@ app.get('/process-files', (req, res) => {
 
     // Handle process completion
     pythonProcess.on('close', (code) => {
+      // Delete uploaded files after processing
+      filePaths.forEach((filePath) => fs.unlinkSync(filePath));
+
       if (code === 0) {
         try {
           // Parse output as JSON (assuming Python script returns JSON)
